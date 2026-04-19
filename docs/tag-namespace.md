@@ -47,6 +47,15 @@ When writing XMP, `merge_managed(existing_tags, new_managed_tags)`:
 2. Drops every existing `people|*` and `auto|*` tag (we own that namespace).
 3. Adds all `new_managed_tags` (de-duplicated).
 
+### Per-detector carry-over (idempotency)
+
+`merge_managed` is category-agnostic — it drops *all* managed tags and re-adds whatever the caller passes. The pipeline runs two independently-versioned detectors (faces and elements), and either may be skipped for an image on a given scan because that detector's model version is already recorded in `state.db`. To keep the skipped detector's tags intact, `pipeline.scan()` carries them over from the existing XMP before writing:
+
+- If `run_faces == False`, every existing tag matching `tagging.is_face_tag()` (i.e. `people|*` and `auto|_meta|model-faces-*`) is re-appended to the merged set.
+- If `run_elements == False`, every existing tag matching `tagging.is_elements_tag()` (i.e. `auto|object|*`, `auto|scene|*`, `auto|attr|*`, `auto|_meta|model-elements-*`) is re-appended.
+
+Without this, running `dt-aid scan --elements` on a library previously tagged by `scan --faces` would silently wipe every `people|<name>` tag, because the new managed tag set for that write contains only `auto|*` entries.
+
 This means if you remove a person's reference and re-scan, the stale `people|<name>` tag is not automatically cleared. Promoting a cluster to a person is the forward path; a future `dt-aid prune` command may address the reverse.
 
 ## Hierarchy expansion in XMP

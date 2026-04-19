@@ -65,6 +65,93 @@ def test_tagging_merge_preserves_user_tags():
     assert "auto|object|dog" in merged
 
 
+def test_is_face_tag_and_is_elements_tag():
+    # face-owned
+    assert tagging.is_face_tag("people|alice")
+    assert tagging.is_face_tag("people|unknown|cluster-003")
+    assert tagging.is_face_tag("people")
+    assert tagging.is_face_tag("auto|_meta|model-faces-buffalo-l-v1")
+    # elements-owned
+    assert tagging.is_elements_tag("auto|object|dog")
+    assert tagging.is_elements_tag("auto|scene|beach")
+    assert tagging.is_elements_tag("auto|attr|sunset")
+    assert tagging.is_elements_tag("auto|_meta|model-elements-openclip-vit-b-32-v1")
+    # cross-classification must not leak
+    assert not tagging.is_face_tag("auto|object|dog")
+    assert not tagging.is_face_tag("auto|_meta|model-elements-openclip-v1")
+    assert not tagging.is_elements_tag("people|alice")
+    assert not tagging.is_elements_tag("auto|_meta|model-faces-buffalo-l-v1")
+    # non-managed
+    assert not tagging.is_face_tag("vacation|italy")
+    assert not tagging.is_elements_tag("vacation|italy")
+
+
+def test_pipeline_merge_logic_preserves_uninvolved_detector_tags():
+    """
+    Regression: when `scan --elements` runs on a library that was previously
+    tagged by `scan --faces`, the idempotency layer skips face re-detection
+    (run_faces=False) so `new_tags` contains only `auto|*` entries. Without
+    the carry-over, merge_managed() would drop the existing `people|*` tags.
+    Mirrors the merge+carry-over logic in pipeline.scan().
+    """
+    existing = [
+        "vacation|italy",               # user tag, must survive
+        "people",                       # ancestor
+        "people|alice",                 # face label, must survive (faces skipped)
+        "auto",                         # ancestor
+        "auto|_meta",                   # ancestor
+        "auto|_meta|model-faces-buffalo-l-v1",  # face provenance, must survive
+        "auto|object|stale-dog",        # elements ran => should be replaced
+    ]
+    new_tags_elements_only = [
+        Tag(TagKind.OBJECT, "auto|object|cat"),
+        Tag(TagKind.META, "auto|_meta|model-elements-openclip-vit-b-32-v1"),
+    ]
+    # Apply the same merge logic pipeline.scan() applies when run_faces=False
+    # and run_elements=True.
+    merged = tagging.merge_managed(existing, new_tags_elements_only)
+    for t in existing:
+        if tagging.is_face_tag(t) and t not in merged:
+            merged.append(t)
+
+    assert "vacation|italy" in merged
+    assert "people|alice" in merged
+    assert "auto|_meta|model-faces-buffalo-l-v1" in merged
+    assert "auto|object|cat" in merged
+    assert "auto|_meta|model-elements-openclip-vit-b-32-v1" in merged
+    # stale element tag dropped (elements detector ran this pass)
+    assert "auto|object|stale-dog" not in merged
+
+
+def test_pipeline_merge_logic_preserves_elements_when_faces_only():
+    """
+    Symmetric regression: `scan --faces` on a library previously tagged by
+    `scan --elements` must not wipe the existing auto|object|* / scene / attr
+    tags when faces runs alone.
+    """
+    existing = [
+        "people|alice",                 # faces ran => should be replaced
+        "auto|object|dog",              # elements skipped, must survive
+        "auto|scene|beach",             # elements skipped, must survive
+        "auto|_meta|model-elements-openclip-vit-b-32-v1",  # must survive
+    ]
+    new_tags_faces_only = [
+        Tag(TagKind.PERSON, "people|bob"),
+        Tag(TagKind.META, "auto|_meta|model-faces-buffalo-l-v1"),
+    ]
+    merged = tagging.merge_managed(existing, new_tags_faces_only)
+    for t in existing:
+        if tagging.is_elements_tag(t) and t not in merged:
+            merged.append(t)
+
+    assert "people|bob" in merged
+    assert "auto|_meta|model-faces-buffalo-l-v1" in merged
+    assert "auto|object|dog" in merged
+    assert "auto|scene|beach" in merged
+    assert "auto|_meta|model-elements-openclip-vit-b-32-v1" in merged
+    assert "people|alice" not in merged  # faces ran, old label replaced
+
+
 def test_tagging_hierarchical_ancestors():
     assert tagging.hierarchical_ancestors("people|family|alice") == [
         "people",

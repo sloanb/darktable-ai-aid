@@ -83,6 +83,25 @@ def is_managed_tag(name: str) -> bool:
     )
 
 
+def is_face_tag(name: str) -> bool:
+    """Managed tags owned by the face detector: people|* plus the faces provenance tag."""
+    return (
+        name == PEOPLE_ROOT
+        or name.startswith(PEOPLE_ROOT + SEP)
+        or name.startswith(f"{AUTO_META}{SEP}model-faces-")
+    )
+
+
+def is_elements_tag(name: str) -> bool:
+    """Managed tags owned by the elements tagger: auto|object|*, auto|scene|*, auto|attr|*, plus the elements provenance tag."""
+    return (
+        name.startswith(AUTO_OBJECT + SEP)
+        or name.startswith(AUTO_SCENE + SEP)
+        or name.startswith(AUTO_ATTR + SEP)
+        or name.startswith(f"{AUTO_META}{SEP}model-elements-")
+    )
+
+
 def dedup_tags(existing: list[str], new_tags: list[Tag]) -> list[Tag]:
     """Return new_tags minus anything already present in existing."""
     have = set(existing)

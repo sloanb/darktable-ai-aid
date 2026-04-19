@@ -90,6 +90,7 @@ plugins/
 - `core/` imports nothing from `cli/`. The planned Lua plugin depends on this.
 - Never mutate `library.db`. Reads use `?mode=ro` URIs; writes go to XMP sidecars.
 - `tagging.is_managed_tag()` is the single source of truth for which tags we own. Any new auto-tag root must be added there AND covered by a test in `test_tagging_merge_preserves_user_tags`.
+- `tagging.is_face_tag()` / `tagging.is_elements_tag()` partition the managed namespace by which detector produced each tag. `pipeline.scan()` uses them to carry over tags from a detector that was skipped by idempotency (so e.g. scanning elements-only doesn't wipe existing people tags). New tag categories owned by a new detector must add a matching classifier and be covered by a carry-over test.
 - `embeddings.npy` and `embeddings.meta.parquet` must stay row-aligned. Always append via `EmbeddingStore.append()`.
 - Every write path (XMP, state.db, embeddings) writes to a `.tmp` file and renames. No partial writes.
 

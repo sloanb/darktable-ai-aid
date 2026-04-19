@@ -226,10 +226,21 @@ def scan(
 
             if new_tags and not options.dry_run and options.write_mode == "xmp":
                 existing_flat, existing_hier = xmp.read_subjects(image.path)
+                base = existing_hier or image.tags
                 # merge managed hierarchy: replace managed tags with new set
-                merged_hier = tagging.merge_managed(
-                    existing_hier or image.tags, new_tags
-                )
+                merged_hier = tagging.merge_managed(base, new_tags)
+                # Idempotency preserves detectors that didn't re-run this pass.
+                # merge_managed() drops every managed tag, so without this
+                # carry-over, `scan --elements` on an image previously tagged
+                # with --faces would wipe every people|* tag (and vice versa).
+                if not run_faces:
+                    for t in base:
+                        if tagging.is_face_tag(t) and t not in merged_hier:
+                            merged_hier.append(t)
+                if not run_elements:
+                    for t in base:
+                        if tagging.is_elements_tag(t) and t not in merged_hier:
+                            merged_hier.append(t)
                 # flat subjects = leaf labels for each hierarchical tag
                 leaves = [xmp.leaf_label(t) for t in merged_hier]
                 # de-dup leaves
