@@ -193,7 +193,55 @@ Repeat for each person who needs it.
 
 ---
 
-## Workflow 6 — opting in to element tagging (objects / scenes / attributes)
+## Workflow 6 — fixing a wrong tag
+
+**When:** dt-aid tagged a face with the wrong person. There's no single "untag" command — you pick one of three fixes depending on how widespread the problem is.
+
+### 6a. One or two images, and you know who the face actually is
+
+```
+dt-aid faces add-image /path/to/photo.jpg <correct-name> [--face-index N]
+```
+
+`add-image` finds the wrongly-labeled face in the cache (by embedding similarity > 0.95), **overwrites** its label to `<correct-name>`, appends its vector to the correct person's reference, and rewrites the XMP. The wrong tag is gone immediately. Use `--face-index` if the largest face in the photo isn't the one you want to re-label.
+
+Follow with `dt-aid faces rematch` — it won't revisit this row (it's now labeled), but the richer reference may clean up other false negatives across the library.
+
+### 6b. One image, the face isn't anyone you care about (stranger, background)
+
+Open the image in darktable and remove the wrong `people|<name>` tag from the tagging panel. The parquet still records the wrong label internally, but nothing rewrites the XMP unless you later run `dt-aid scan --force` on that image — at which point the bad reference would put the tag back. If you think that risk is real, fix the reference (6c) instead.
+
+### 6c. Many images wrongly tagged as `<name>` — the reference itself is contaminated
+
+This usually means `build-refs` picked up a stray face, or a cluster that you `relabel`ed had the wrong person mixed in. The fix is to reset that person's reference and re-detect the affected images:
+
+1. **Find the affected images.** The Lua plugin can filter the grid by a name; from the CLI you can query the parquet. A quick one-liner:
+   ```
+   python -c "import pyarrow.parquet as pq; t = pq.read_table('$HOME/.local/share/dt-aid/faces/embeddings.meta.parquet'); [print(p) for p in t.filter(t['label'].cast('string') == '<name>')['image_path'].to_pylist()]"
+   ```
+
+2. **Delete the bad reference file:**
+   ```
+   rm ~/.local/share/dt-aid/faces/references/<name>.npy
+   ```
+
+3. **Rebuild from a clean folder:**
+   ```
+   dt-aid faces build-refs ./clean-known-faces
+   ```
+   Only include photos you're confident are `<name>`.
+
+4. **Re-run scan with `--force` on the affected images:**
+   ```
+   dt-aid scan --faces --force --path /photos/affected
+   ```
+   `--force` re-detects the faces and re-matches them against the clean reference; the write step drops the stale `people|<name>` tag when it rewrites the XMP. Plain `rematch` will *not* help here — it only touches faces that are still unlabeled.
+
+> **Known gap.** There is no `dt-aid faces unlabel` command, and `rematch` deliberately skips already-labeled faces. That means there's no lightweight "just re-check everyone's labels" pass yet — scope-3 corrections currently cost a `--force` rescan. Tracked as deferred work.
+
+---
+
+## Workflow 7 — opting in to element tagging (objects / scenes / attributes)
 
 **When:** you want tags like `auto|object|dog`, `auto|scene|beach`, `auto|attr|sunset`. This uses a separate model (CLIP) and needs the `[elements]` install extra.
 
@@ -254,7 +302,7 @@ Either turn on **Preferences → Storage → "look for updated XMP files on star
 Re-run `relabel` with the correct name — it overwrites the previous label. The face rows, references, and XMPs all move to the new name. The old (incorrect) reference file is not deleted automatically; remove it manually from `~/.local/share/dt-aid/faces/references/`.
 
 **A face got tagged as the wrong person.**
-Lower precision usually means the reference for one person includes a stray face. The quick fix: rebuild that person's reference from a clean folder (`build-refs`). The targeted fix: delete `~/.local/share/dt-aid/faces/references/<name>.npy` and rebuild. Then `rematch`.
+See Workflow 6 — the fix depends on scope. One image where you know the correct identity: `dt-aid faces add-image <image> <correct-name>`. One stranger in a background: remove the tag in darktable. Many wrong images with the same name: the reference is contaminated — delete `references/<name>.npy`, rebuild from a clean folder, and `scan --force` the affected images.
 
 **Why is rematch so much faster than scan?**
 `scan` has to load every image and run the face detector on it. `rematch` reuses the face embeddings you already cached — it's pure vector math against the reference library. No GPU needed.
@@ -283,7 +331,7 @@ Delete `~/.local/share/dt-aid/` (or just the `faces/` subfolder) and re-scan. Yo
 |---|---|
 | `dt-aid scan --faces [--elements]` | After importing new photos into darktable. |
 | `dt-aid faces build-refs <dir>` | First time setting up known people, or starting a person's reference over. |
-| `dt-aid faces add-image <image> <name>` | Teaching one photo at a time; enriching an existing person. |
+| `dt-aid faces add-image <image> <name>` | Teaching one photo at a time; enriching an existing person; correcting a wrong tag to the real identity (Workflow 6a). |
 | `dt-aid faces cluster` | After a scan that added unmatched faces. |
 | `dt-aid faces list [--min-size N]` | Before a labeling session, to see which clusters to tackle. |
 | `dt-aid faces relabel <id> <name>` | Naming a cluster. |
