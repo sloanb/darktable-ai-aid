@@ -4,6 +4,9 @@ All notable changes to `dt-aid`. The format loosely follows [Keep a Changelog](h
 
 ## Unreleased
 
+### Changed — 2026-04-19
+- **Clean error when `[elements]` extra isn't installed.** Previously `dt-aid scan --elements` without `open-clip-torch` installed surfaced a bare `ModuleNotFoundError` traceback from deep inside `ClipTagger.__init__`. Now the import failure is caught and re-raised as `MissingElementsExtraError` with the exact install command; the CLI prints it in red and exits 5.
+
 ### Fixed — 2026-04-19
 - **Scanning one detector no longer wipes the other's tags.** Running `dt-aid scan --elements` on a library previously tagged by `scan --faces` (or vice versa) silently stripped every `people|*` tag from affected XMPs, because the pipeline's write path called `merge_managed()` with a `new_tags` list that only contained the re-running detector's output. The skipped detector's tags are now carried over from the existing XMP before `merge_managed()` runs, gated by `tagging.is_face_tag()` / `tagging.is_elements_tag()`. Regression test: `test_pipeline_merge_logic_preserves_uninvolved_detector_tags` (and its symmetric counterpart). Users who were avoiding incremental elements scans to protect people tags can now run them safely without `--force`.
 

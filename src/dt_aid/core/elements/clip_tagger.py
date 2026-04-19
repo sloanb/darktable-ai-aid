@@ -10,6 +10,10 @@ from ..image_io import load_rgb_pil
 from .labels import LabelSet
 
 
+class MissingElementsExtraError(RuntimeError):
+    """Raised when the `[elements]` optional extra is not installed."""
+
+
 @dataclass
 class ElementDetection:
     kind: str  # "object" | "scene" | "attr"
@@ -33,8 +37,17 @@ class ClipTagger:
         threshold: float = 0.25,
         device: str | None = None,
     ) -> None:
-        import open_clip
-        import torch
+        try:
+            import open_clip
+            import torch
+        except ImportError as e:
+            raise MissingElementsExtraError(
+                "element tagging requires the [elements] optional extra. Install with:\n"
+                "  uv pip install -e '.[elements]'\n"
+                "  (or: pip install -e '.[elements]')\n"
+                "This pulls in torch + open-clip-torch (~2 GB). GPU users may want to "
+                "install torch with CUDA first (see docs/development.md)."
+            ) from e
 
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"

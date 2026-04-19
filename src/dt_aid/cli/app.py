@@ -9,6 +9,7 @@ from rich.console import Console
 
 from ..core.config import load_settings
 from ..core.darktable_db import DarktableRunningError
+from ..core.elements.clip_tagger import MissingElementsExtraError
 from ..core.faces.embeddings import EmbeddingStore, ReferenceLibrary
 from ..core.pipeline import ScanOptions, scan
 from ..core.state import open_state, promote_cluster
@@ -189,6 +190,9 @@ def cmd_scan(args: argparse.Namespace) -> int:
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/red]")
         return 4
+    except MissingElementsExtraError as e:
+        console.print(f"[red]{e}[/red]")
+        return 5
 
     console.print(
         f"[green]done[/green]: total={report.total} processed={report.processed} "

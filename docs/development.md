@@ -9,7 +9,7 @@ pip install -e '.[dev]'
 ```
 
 Optional extras:
-- `.[elements]` — OpenCLIP + torch (~2 GB) for zero-shot element tagging
+- `.[elements]` — OpenCLIP + torch (~2 GB) for zero-shot element tagging. If you run `dt-aid scan --elements` without this extra, the CLI exits with code 5 and prints the install command (see `MissingElementsExtraError` in `core/elements/clip_tagger.py`).
 - `.[gpu]` — `onnxruntime-gpu` for CUDA-accelerated face detection
 - `.[yolo]` — `ultralytics` for YOLO-based object detection (not yet wired into the pipeline)
 
