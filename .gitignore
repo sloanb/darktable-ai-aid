@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.uv/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+*.swp
+.DS_Store
+
+# local cache
+data/
+scratch/
+
+# Claude Code local overrides (harness config with per-machine state)
+.claude/settings.local.json

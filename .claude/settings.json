@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -e 'select(.tool_input.file_path // \"\" | contains(\"/darktable-ai-aid/src/\"))' >/dev/null 2>&1 && printf '%s\\n' '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"Code change detected under src/. Before finishing this turn, check whether docs/ (architecture.md, tag-namespace.md, data-formats.md, development.md) need updates and append a CHANGELOG.md entry if user-visible behavior changed.\"}}' || true"
+          }
+        ]
+      }
+    ]
+  }
+}
