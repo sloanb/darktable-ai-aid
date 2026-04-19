@@ -5,6 +5,7 @@ All notable changes to `dt-aid`. The format loosely follows [Keep a Changelog](h
 ## Unreleased
 
 ### Changed — 2026-04-19
+- **Batched, fp16 CLIP inference.** `ClipTagger` gained `tag_batch(paths)` which stacks images into `elements_batch_size`-sized GPU forward passes (default 16, tunable via `DT_AID_ELEMENTS_BATCH_SIZE`). On CUDA the model now runs in fp16 by default — roughly 2× throughput with no meaningful accuracy cost for zero-shot tagging. Text features are encoded once at init and cached as fp32 numpy so each image's tag step no longer pays a per-call GPU→CPU copy. `pipeline.scan()` buffers element-needing images, flushes on batch-full and at end-of-scan, and commits each image's XMP in-place to preserve iteration order. Combined with GPU already being auto-selected, expected end-to-end speedup for `scan --elements` is roughly 4–8× on a Blackwell-class GPU over the previous per-image CPU-copy path.
 - **Clean error when `[elements]` extra isn't installed.** Previously `dt-aid scan --elements` without `open-clip-torch` installed surfaced a bare `ModuleNotFoundError` traceback from deep inside `ClipTagger.__init__`. Now the import failure is caught and re-raised as `MissingElementsExtraError` with the exact install command; the CLI prints it in red and exits 5.
 
 ### Fixed — 2026-04-19

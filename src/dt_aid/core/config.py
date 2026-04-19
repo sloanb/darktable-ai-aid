@@ -37,6 +37,9 @@ class Settings(BaseSettings):
 
     elements_threshold: float = 0.25
     elements_labels_file: Path | None = None
+    # Images per CLIP forward pass. Larger = better GPU utilization but
+    # more VRAM; 16 is comfortable at fp16 on an 8 GB GPU.
+    elements_batch_size: int = 16
 
     # "auto" picks CUDA when onnxruntime-gpu is importable, else CPU.
     device: str = "auto"  # auto | cpu | cuda

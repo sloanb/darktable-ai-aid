@@ -127,6 +127,8 @@ Override defaults with environment variables (`DT_AID_` prefix) or CLI flags:
 | Face match threshold | `DT_AID_FACE_MATCH_THRESHOLD` | 0.5 |
 | Face detection min score | `DT_AID_FACE_DET_SCORE_THRESHOLD` | 0.5 |
 | Element tag threshold | `DT_AID_ELEMENTS_THRESHOLD` | 0.25 |
+| Elements batch size (CLIP) | `DT_AID_ELEMENTS_BATCH_SIZE` | 16 |
+| Inference device | `DT_AID_DEVICE` | auto (CUDA if available else CPU) |
 
 ## Development
 

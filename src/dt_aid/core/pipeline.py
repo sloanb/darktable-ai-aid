@@ -115,6 +115,7 @@ def scan(
             cache_dir=settings.models_dir,
             threshold=settings.elements_threshold,
             device=resolve_torch_device(settings.device),
+            batch_size=settings.elements_batch_size,
         )
 
     dt_conn = connect_readonly(settings.darktable_library)
@@ -147,6 +148,79 @@ def scan(
             )
 
     with open_state(settings.state_db) as state:
+        # Images awaiting batched element tagging. Each entry references
+        # the same ImageResult that's already been appended to `results`,
+        # so commits fill in element tags + final_sidecar_tags in place
+        # and iteration order is preserved.
+        pending: list[tuple[DtImage, ImageResult, bool, bool]] = []
+
+        def _commit(image: DtImage, result: ImageResult, rf: bool, re: bool) -> None:
+            new_tags = result.new_tags
+            if new_tags and not options.dry_run and options.write_mode == "xmp":
+                existing_flat, existing_hier = xmp.read_subjects(image.path)
+                base = existing_hier or image.tags
+                merged_hier = tagging.merge_managed(base, new_tags)
+                # Carry over tags from any detector that was skipped this
+                # pass (merge_managed drops every managed tag), so e.g.
+                # scanning --elements on a faces-tagged library doesn't
+                # wipe the people|* tags.
+                if not rf:
+                    for t in base:
+                        if tagging.is_face_tag(t) and t not in merged_hier:
+                            merged_hier.append(t)
+                if not re:
+                    for t in base:
+                        if tagging.is_elements_tag(t) and t not in merged_hier:
+                            merged_hier.append(t)
+                leaves = [xmp.leaf_label(t) for t in merged_hier]
+                seen: set[str] = set()
+                flat: list[str] = []
+                for leaf in (*existing_flat, *leaves):
+                    if leaf not in seen:
+                        seen.add(leaf)
+                        flat.append(leaf)
+                xmp.write_subjects(
+                    image.path,
+                    flat_tags=flat,
+                    hierarchical_tags=merged_hier,
+                )
+                result.final_sidecar_tags = merged_hier
+                report.written += 1
+
+            if not options.dry_run:
+                mark_processed(
+                    state,
+                    str(image.path),
+                    dt_image_id=image.id,
+                    faces_version=FACES_MODEL_VERSION if rf else None,
+                    elements_version=ELEMENTS_MODEL_VERSION if re else None,
+                )
+            report.processed += 1
+
+        def _flush_elements() -> None:
+            if not pending:
+                return
+            if clip_tagger is None:
+                for image, result, rf, re in pending:
+                    _commit(image, result, rf, re)
+                pending.clear()
+                return
+            paths = [entry[0].path for entry in pending]
+            all_detections = clip_tagger.tag_batch(paths)
+            for (image, result, rf, re), detections in zip(pending, all_detections):
+                for d in detections:
+                    if d.kind == "object":
+                        result.new_tags.append(tagging.object_tag(d.label))
+                    elif d.kind == "scene":
+                        result.new_tags.append(tagging.scene_tag(d.label))
+                    elif d.kind == "attr":
+                        result.new_tags.append(tagging.attr_tag(d.label))
+                if detections:
+                    result.new_tags.append(tagging.elements_provenance_tag())
+                report.elements_tagged += len(detections)
+                _commit(image, result, rf, re)
+            pending.clear()
+
         for idx, image in enumerate(images, start=1):
             progress("scan", idx, report.total)
 
@@ -194,7 +268,7 @@ def scan(
                                 bbox=det.bbox,
                                 det_score=det.det_score,
                                 embedding=det.embedding,
-                                cluster_id=-1,  # unclustered pending a re-cluster pass
+                                cluster_id=-1,
                                 label="",
                             )
                         )
@@ -204,70 +278,21 @@ def scan(
                 if not options.dry_run and store is not None and face_rows:
                     store.append(face_rows)
 
-            if run_elements and clip_tagger is not None:
-                detections = clip_tagger.tag(image.path)
-                for d in detections:
-                    if d.kind == "object":
-                        new_tags.append(tagging.object_tag(d.label))
-                    elif d.kind == "scene":
-                        new_tags.append(tagging.scene_tag(d.label))
-                    elif d.kind == "attr":
-                        new_tags.append(tagging.attr_tag(d.label))
-                if detections:
-                    new_tags.append(tagging.elements_provenance_tag())
-                report.elements_tagged += len(detections)
-
             result = ImageResult(
                 image=image,
                 new_tags=new_tags,
                 ran_faces=run_faces,
                 ran_elements=run_elements,
             )
-
-            if new_tags and not options.dry_run and options.write_mode == "xmp":
-                existing_flat, existing_hier = xmp.read_subjects(image.path)
-                base = existing_hier or image.tags
-                # merge managed hierarchy: replace managed tags with new set
-                merged_hier = tagging.merge_managed(base, new_tags)
-                # Idempotency preserves detectors that didn't re-run this pass.
-                # merge_managed() drops every managed tag, so without this
-                # carry-over, `scan --elements` on an image previously tagged
-                # with --faces would wipe every people|* tag (and vice versa).
-                if not run_faces:
-                    for t in base:
-                        if tagging.is_face_tag(t) and t not in merged_hier:
-                            merged_hier.append(t)
-                if not run_elements:
-                    for t in base:
-                        if tagging.is_elements_tag(t) and t not in merged_hier:
-                            merged_hier.append(t)
-                # flat subjects = leaf labels for each hierarchical tag
-                leaves = [xmp.leaf_label(t) for t in merged_hier]
-                # de-dup leaves
-                seen: set[str] = set()
-                flat: list[str] = []
-                for leaf in (*existing_flat, *leaves):
-                    if leaf not in seen:
-                        seen.add(leaf)
-                        flat.append(leaf)
-                xmp.write_subjects(
-                    image.path,
-                    flat_tags=flat,
-                    hierarchical_tags=merged_hier,
-                )
-                result.final_sidecar_tags = merged_hier
-                report.written += 1
-
-            if not options.dry_run:
-                mark_processed(
-                    state,
-                    str(image.path),
-                    dt_image_id=image.id,
-                    faces_version=FACES_MODEL_VERSION if run_faces else None,
-                    elements_version=ELEMENTS_MODEL_VERSION if run_elements else None,
-                )
-
-            report.processed += 1
             results.append(result)
+
+            if run_elements and clip_tagger is not None:
+                pending.append((image, result, run_faces, run_elements))
+                if len(pending) >= settings.elements_batch_size:
+                    _flush_elements()
+            else:
+                _commit(image, result, run_faces, run_elements)
+
+        _flush_elements()
 
     return report, results
