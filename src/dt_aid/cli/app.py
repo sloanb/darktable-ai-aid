@@ -10,6 +10,7 @@ from rich.console import Console
 from ..core.config import load_settings
 from ..core.darktable_db import DarktableRunningError
 from ..core.elements.clip_tagger import MissingElementsExtraError
+from ..core.faces.detector import MissingOnnxRuntimeError
 from ..core.faces.embeddings import EmbeddingStore, ReferenceLibrary
 from ..core.pipeline import ScanOptions, scan
 from ..core.state import open_state, promote_cluster
@@ -461,21 +462,25 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     setup_logging(verbose=args.verbose)
-    if args.cmd == "scan":
-        return cmd_scan(args)
-    if args.cmd == "faces":
-        if args.faces_cmd == "relabel":
-            return cmd_faces_relabel(args)
-        if args.faces_cmd == "build-refs":
-            return cmd_faces_build_refs(args)
-        if args.faces_cmd == "cluster":
-            return cmd_faces_cluster(args)
-        if args.faces_cmd == "rematch":
-            return cmd_faces_rematch(args)
-        if args.faces_cmd == "add-image":
-            return cmd_faces_add_image(args)
-        if args.faces_cmd == "list":
-            return cmd_faces_list(args)
+    try:
+        if args.cmd == "scan":
+            return cmd_scan(args)
+        if args.cmd == "faces":
+            if args.faces_cmd == "relabel":
+                return cmd_faces_relabel(args)
+            if args.faces_cmd == "build-refs":
+                return cmd_faces_build_refs(args)
+            if args.faces_cmd == "cluster":
+                return cmd_faces_cluster(args)
+            if args.faces_cmd == "rematch":
+                return cmd_faces_rematch(args)
+            if args.faces_cmd == "add-image":
+                return cmd_faces_add_image(args)
+            if args.faces_cmd == "list":
+                return cmd_faces_list(args)
+    except MissingOnnxRuntimeError as e:
+        console.print(f"[red]{e}[/red]")
+        return 6
     parser.error(f"unknown command: {args.cmd}")
     return 1
 

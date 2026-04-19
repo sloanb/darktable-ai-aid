@@ -5,27 +5,39 @@
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e '.[dev]'
+pip install -e '.[cpu,dev]'     # or '.[gpu,dev]' — pick exactly one of cpu/gpu
 ```
 
-Optional extras:
+Extras:
+- `.[cpu]` — `onnxruntime` (CPU). **Mutually exclusive with `[gpu]`** — they share the `onnxruntime` Python import path and collide. `onnxruntime` is deliberately NOT in the main deps; face detection raises `MissingOnnxRuntimeError` (exit 6) with install instructions if neither `[cpu]` nor `[gpu]` is present.
+- `.[gpu]` — `onnxruntime-gpu` plus bundled NVIDIA CUDA 12 runtime libs for CUDA-accelerated face detection. **Mutually exclusive with `[cpu]`**.
 - `.[elements]` — OpenCLIP + torch (~2 GB) for zero-shot element tagging. If you run `dt-aid scan --elements` without this extra, the CLI exits with code 5 and prints the install command (see `MissingElementsExtraError` in `core/elements/clip_tagger.py`). CLIP inference runs fp16 on CUDA by default and batches `elements_batch_size` images per forward pass (default 16; tune via `DT_AID_ELEMENTS_BATCH_SIZE` if you hit OOM or have VRAM headroom).
-- `.[gpu]` — `onnxruntime-gpu` for CUDA-accelerated face detection
-- `.[yolo]` — `ultralytics` for YOLO-based object detection (not yet wired into the pipeline)
+- `.[yolo]` — `ultralytics` for YOLO-based object detection (not yet wired into the pipeline).
+- `.[dev]` — `pytest`, `ruff`.
+
+### If you installed the wrong ONNX Runtime
+
+Because `onnxruntime` and `onnxruntime-gpu` both install the same `onnxruntime/` Python tree, `pip uninstall` of one leaves the other in a corrupted state. The only reliable reset is:
+
+```bash
+pip uninstall -y onnxruntime onnxruntime-gpu
+pip install 'onnxruntime-gpu>=1.24'     # or: 'onnxruntime>=1.17'
+```
 
 ### GPU setup
 
 With an NVIDIA GPU (Pascal or newer) you can get 10–30× face-detection speedup:
 
 ```bash
-# swap onnxruntime for the GPU build
-pip uninstall -y onnxruntime
-pip install -e '.[gpu]'
+# fresh venv (recommended): pick [gpu] up-front
+pip install -e '.[gpu,elements,dev]'
 
 # verify CUDA is visible to ORT
 python -c "import onnxruntime as ort; print(ort.get_available_providers())"
-# expect: ['CUDAExecutionProvider', 'CPUExecutionProvider']
+# expect: ['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
 ```
+
+If you previously installed `[cpu]` (or have both `onnxruntime` and `onnxruntime-gpu` in `pip list`), wipe both and reinstall the GPU one — see "If you installed the wrong ONNX Runtime" above.
 
 - onnxruntime-gpu PyPI wheels target CUDA 12 but work with newer drivers (CUDA 13.x runtime) via NVIDIA's forward-compatible driver layer. The `[gpu]` extra also pins the `nvidia-*-cu12` pip packages that carry the CUDA and cuDNN shared libraries; these are auto-preloaded by `core.device.preload_cuda_libs()` before ONNX Runtime initializes, so **no `LD_LIBRARY_PATH` setup is required**. System cuDNN is not used.
 - **Do not have both `onnxruntime` and `onnxruntime-gpu` installed at the same time** — they share an import name and collide. If insightface or another dep pulls CPU `onnxruntime` back in, uninstall both and reinstall only the GPU variant.

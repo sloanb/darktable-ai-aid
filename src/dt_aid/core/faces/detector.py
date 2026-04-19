@@ -9,6 +9,10 @@ from ..config import FACES_MODEL_NAME
 from ..image_io import load_bgr
 
 
+class MissingOnnxRuntimeError(RuntimeError):
+    """Raised when neither `onnxruntime` nor `onnxruntime-gpu` is importable."""
+
+
 @dataclass
 class FaceDetection:
     bbox: tuple[float, float, float, float]  # x1, y1, x2, y2
@@ -27,6 +31,15 @@ class FaceDetector:
         det_score_threshold: float = 0.5,
         providers: list[str] | None = None,
     ) -> None:
+        try:
+            import onnxruntime  # noqa: F401
+        except ImportError as e:
+            raise MissingOnnxRuntimeError(
+                "face detection requires an ONNX Runtime. Install exactly ONE of:\n"
+                "  CPU:  uv pip install -e '.[cpu]'    (or: pip install -e '.[cpu]')\n"
+                "  CUDA: uv pip install -e '.[gpu]'    (or: pip install -e '.[gpu]')\n"
+                "Do not install both — they share the same import path and collide."
+            ) from e
         from insightface.app import FaceAnalysis
 
         models_dir.mkdir(parents=True, exist_ok=True)

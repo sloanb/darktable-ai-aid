@@ -9,7 +9,11 @@ authors = [{ name = "darktable-ai-aid" }]
 
 dependencies = [
     "insightface>=0.7.3",
-    "onnxruntime>=1.17",
+    # ONNX Runtime is NOT a main dep — it's split between [cpu] and [gpu]
+    # extras because `onnxruntime` and `onnxruntime-gpu` share the same
+    # Python import path and collide if both are installed. Users must pick
+    # exactly one; face detection raises MissingOnnxRuntimeError with
+    # install instructions if neither is present.
     "numpy>=1.26",
     "opencv-python-headless>=4.9",
     "pillow>=10.0",
@@ -27,6 +31,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+cpu = [
+    # CPU ONNX Runtime. Mutually exclusive with [gpu] — do not install both.
+    "onnxruntime>=1.17",
+]
 elements = [
     "open-clip-torch>=2.24",
     "torch>=2.2",
@@ -35,6 +43,8 @@ yolo = [
     "ultralytics>=8.1",
 ]
 gpu = [
+    # GPU ONNX Runtime + bundled CUDA 12 runtime libs. Mutually exclusive
+    # with [cpu] — do not install both.
     "onnxruntime-gpu>=1.24",
     "nvidia-cublas-cu12",
     "nvidia-cuda-runtime-cu12",

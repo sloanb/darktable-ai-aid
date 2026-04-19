@@ -14,16 +14,30 @@ AI-assisted auto-tagging for [darktable](https://www.darktable.org) libraries. R
 
 Requires Python 3.11+.
 
+You must pick **exactly one** ONNX Runtime variant: `[cpu]` or `[gpu]`. They share the same import path — installing both collides and silently leaves only the CPU build active.
+
 ```bash
 # with uv (recommended)
 uv venv
-uv pip install -e .
 
-# for element tagging (CLIP)
+# CPU-only (simplest path; face detection on CPU)
+uv pip install -e '.[cpu]'
+
+# OR, CUDA-accelerated face detection (NVIDIA, Pascal+)
+uv pip install -e '.[gpu]'
+
+# Add CLIP element tagging (~2 GB of torch) to either of the above
 uv pip install -e '.[elements]'
 
-# for GPU-accelerated face detection
-uv pip install -e '.[gpu]'
+# Common combos
+uv pip install -e '.[cpu,elements]'
+uv pip install -e '.[gpu,elements]'
+```
+
+If you already have the wrong ONNX Runtime installed, reset with:
+```bash
+pip uninstall -y onnxruntime onnxruntime-gpu
+pip install -e '.[gpu]'        # or '.[cpu]'
 ```
 
 On first face-detection run, InsightFace downloads the `buffalo_l` model pack (~300MB) to `~/.local/share/dt-aid/models/`.
